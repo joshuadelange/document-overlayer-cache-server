@@ -21,12 +21,24 @@ http.createServer(function (req, res) {
     pageSaveLocation: '',
     pageWidth: 1080,
 
+    isRetryingAfter404: false,
+
+    log: function(){
+      var args = [] ;
+      for(var key in arguments) { args.push(arguments[key]) ; }
+
+      var message = JSON.stringify(args).replace('{', '').replace('}', '').replace(':', '').replace(',', '').replace('"', '').replace('[', '').replace(']', '') ;
+      console.log(message) ;
+      $('.log').prepend('<li>' + message + '</li>') ;
+
+    },
+
     init: function(){
 
       var given = this ;
 
       var urlParts = req.url.split('/') ;
-      console.log('url parts', urlParts) ;
+      given.log('url parts', urlParts) ;
 
       //first parameter = url (of google doc viewer)
       if(urlParts[1].indexOf('http') > -1) {
@@ -36,13 +48,13 @@ http.createServer(function (req, res) {
 
           if(urlParts[2] && parseInt(urlParts[2], 10) > 0) {
 
-            console.log(given.documentName, 'got an page number!', given) ;
+            given.log(given.documentName, given.pageNumber, 'got an page number!', given) ;
 
             given.pageNumber = parseInt(urlParts[2], 10) ;
 
             given.downloadPage(given.pageNumber, function(){
 
-              console.log(given.documentName, 'got page') ;
+              given.log(given.documentName, given.pageNumber, 'got page') ;
 
               //output png here
               var img = fs.readFileSync(given.pageSaveLocation);
@@ -62,7 +74,7 @@ http.createServer(function (req, res) {
       }
       else {
   
-        $('.log').prepend('<li>Connected to the client</li>') ;
+        given.log('Connected to client!') ;
 
         //for the sake of pinging
         res.writeHead(200, {'Content-Type': 'text/plain'});
@@ -79,7 +91,7 @@ http.createServer(function (req, res) {
 
       given.documentName = decodeURIComponent(decodeURIComponent(given.url).replace(stuffWeDontCareAbout, '').split('/')[1].split('?')[0]) ;
 
-      console.log('doc name', given.documentName) ;
+      given.log(given.documentName, given.pageNumber, ' is loading') ;
 
       given.docSaveDir = given.saveDir + given.documentName.replace(' ', '-').replace('.', '-') + '/' ;
 
@@ -89,11 +101,11 @@ http.createServer(function (req, res) {
         //check if info exists
         fs.exists(given.docSaveDir + '_info.txt', function(exists) {
 
-          console.log(given.documentName, given.docSaveDir + '_info.txt', 'info exists', exists) ;
+          given.log(given.documentName, given.pageNumber, given.docSaveDir + '_info.txt', 'info exists', exists) ;
 
           if(exists) {
 
-            console.log(given.documentName, 'reading info', given.docSaveDir + '_info.txt') ;
+            given.log(given.documentName, given.pageNumber, 'reading info', given.docSaveDir + '_info.txt') ;
 
             //read the info!
             fs.readFile(given.docSaveDir + '_info.txt', function(err, f){
@@ -105,7 +117,7 @@ http.createServer(function (req, res) {
               given.baseImageURL = params.baseImageURL ;
               given.numberOfPages = params.numberOfPages ;
 
-              $('.log').prepend('<li>Found ' + given.documentName + ' in cache') ;
+              given.log(given.documentName, ' is cached') ;
 
               //fire callback!
               cb() ;
@@ -115,7 +127,7 @@ http.createServer(function (req, res) {
           }
           else {
 
-            console.log(given.documentName, 'info doesnt exist, scraping iframe') ;
+            given.log(given.documentName, given.pageNumber, 'info doesnt exist, scraping iframe') ;
 
             $('.log').prepend('<li>' + given.documentName + ': Waiting for Google\'s magic...</li>') ;
 
@@ -126,7 +138,7 @@ http.createServer(function (req, res) {
 
               fs.mkdir(given.docSaveDir, function(){
 
-                console.log(given.documentName, 'iframe loaded') ;
+                given.log(given.documentName, given.pageNumber, 'iframe loaded') ;
 
                 given.baseImageURL = 'https://docs.google.com/viewer' + $('iframe').contents().find('.page-image:nth-of-type(2)').attr('src').replace(/(&w=\d+)/, '&w=' + given.pageWidth) ;
 
@@ -135,9 +147,7 @@ http.createServer(function (req, res) {
 
                 fs.writeFileSync(given.docSaveDir + '_info.txt', JSON.stringify(given), 'UTF-8', {'flags': 'w+'});
 
-                $('.log').prepend('<li>' + given.documentName + ': Downloading ' + given.numberOfPages + '</li>') ;
-
-                console.log(given.documentName, 'iframe scraped!') ;
+                given.log(given.documentName, given.pageNumber, 'iframe scraped!') ;
 
                 cb(); //ready for
 
@@ -157,15 +167,12 @@ http.createServer(function (req, res) {
 
       var given = this ;
       given.downloadPage(i, function(){
-    
-        $('.log li:first').html('<li>Downloading ' + i + '/' + given.numberOfPages + ' pages for ' + given.documentName + '</li>') ;
 
         if(i > 1) {
           given.downloadNextPage(i - 1) ;
         }
     
         if(i === 1) {
-          $('.log').prepend('<li>Finished downloading ' + given.documentName + '</li>') ;
           $('iframe[data-name="' + given.documentName + '"]').remove() ;
         }
 
@@ -178,13 +185,13 @@ http.createServer(function (req, res) {
       var given = this,
           pageImageURL = given.baseImageURL.replace('pagenumber=1', 'pagenumber=' + pageNumber) ;
 
-      console.log(given.documentName, 'attemtping to save page ', pageNumber) ;
+      given.log(given.documentName, given.pageNumber, 'attemtping to save page ', pageNumber) ;
       
       given.pageSaveLocation = given.docSaveDir + 'page-' + pageNumber + '.png' ;
 
       fs.exists(given.pageSaveLocation, function(exists) {
 
-        console.log('file exists:', exists) ;
+        given.log(given.documentName, given.pageNumber, 'file exists:', exists) ;
 
         if(exists) {
           //we done! cb!
@@ -192,11 +199,11 @@ http.createServer(function (req, res) {
         }
         else{
 
-          console.log(given.documentName, 'starting file download request') ;
+          given.log(given.documentName, given.pageNumber, 'starting file download request') ;
 
           var startTime = new Date().getTime() ;
 
-          console.log(given.documentName, 'downloading ', pageImageURL) ;
+          given.log(given.documentName, given.pageNumber, 'downloading ', pageImageURL) ;
 
           https.get(pageImageURL, function(response) {
 
@@ -205,21 +212,28 @@ http.createServer(function (req, res) {
             response.setEncoding('binary') ;
 
             response.on('data', function(chunk) {
-              console.log(given.documentName, 'writing data!') ;
+              given.log(given.documentName, given.pageNumber, 'writing data!') ;
               imageData += chunk;
             });
 
             response.on('end', function () {
 
-              console.log(given.documentName, 'end of receiving') ;
+              given.log(given.documentName, given.pageNumber, 'end of receiving') ;
 
               if(imageData.length < 150) {
 
-                console.log('probably 404 error, trying again') ;
+                given.log(given.documentName, given.pageNumber, 'probably 404 error') ;
 
-                fs.unlink(given.pageSaveLocation, function(){
-                  given.downloadPage(pageNumber, cb) ;
-                }) ;
+                if(given.isRetryingAfter404) {
+                  given.log(given.documentName, given.pageNumber, 'page does not exist') ;
+                }
+                else {
+                  given.log(given.documentName, given.pageNumber, 'retrying') ;
+                  fs.unlink(given.pageSaveLocation, function(){
+                    given.downloadPage(pageNumber, cb) ;
+                    given.isRetryingAfter404 = true ;
+                  }) ;
+                }
 
               }
               else {
@@ -230,9 +244,9 @@ http.createServer(function (req, res) {
                     throw err;
                   }
 
-                  console.log(given.documentName, 'TOTAL TIME: ', (new Date().getTime() - startTime) / 1000) ;
+                  given.log(given.documentName, given.pageNumber, 'TOTAL TIME: ', (new Date().getTime() - startTime) / 1000) ;
 
-                  console.log(given.documentName, 'File: ' + given.pageSaveLocation + ' written!');
+                  given.log(given.documentName, given.pageNumber, 'File: ' + given.pageSaveLocation + ' written!');
 
                   cb() ; //callback!
 
