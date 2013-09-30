@@ -2,27 +2,28 @@ var http = require('http'),
     https = require('https'),
     fs = require('fs') ;
 
-var Server = {
+http.createServer(function (req, res) {
 
-  saveDir: process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'] + '/Documents/document-overlayer-cache/',
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-  url: '',
-  documentName: '',
-  docSaveDir: '',
+  var Server = {
 
-  baseImageURL: '',
-  numberOfPages: '',
+    saveDir: process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'] + '/Documents/document-overlayer-cache/',
 
-  pageNumber: null,
-  pageSaveLocation: '',
+    url: '',
+    documentName: '',
+    docSaveDir: '',
 
-  init: function(){
+    baseImageURL: '',
+    numberOfPages: '',
 
-    var given = this ;
+    pageNumber: null,
+    pageSaveLocation: '',
+    pageWidth: 1080,
 
-    http.createServer(function (req, res) {
+    init: function(){
 
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      var given = this ;
 
       var urlParts = req.url.split('/') ;
       console.log('url parts', urlParts) ;
@@ -35,34 +36,20 @@ var Server = {
 
           if(urlParts[2] && parseInt(urlParts[2], 10) > 0) {
 
-            console.log('got an page number!') ;
+            console.log(given.documentName, 'got an page number!', given) ;
 
             given.pageNumber = parseInt(urlParts[2], 10) ;
 
-            console.log('requesting page number', given.pageNumber) ;
-            console.log('total number of pages', given.numberOfPages) ;
+            given.downloadPage(given.pageNumber, function(){
 
-            if(given.pageNumber < given.numberOfPages){
-  
-              given.downloadPage(given.pageNumber, function(){
+              console.log(given.documentName, 'got page') ;
 
-                console.log('got page') ;
+              //output png here
+              var img = fs.readFileSync(given.pageSaveLocation);
+              res.writeHead(200, {'Content-Type': 'image/png'});
+              res.end(img, 'binary');
 
-                //output png here
-                var img = fs.readFileSync(given.pageSaveLocation);
-                res.writeHead(200, {'Content-Type': 'image/png' });
-                res.end(img, 'binary');
-
-              }) ;
-
-            }
-            else {
-
-              res.writeHead(200, {'Content-Type': 'text/plain'});
-              res.end('page doesnt exist');
-              
-            }
-
+            }) ;
 
           }
           else {
@@ -80,185 +67,193 @@ var Server = {
         //for the sake of pinging
         res.writeHead(200, {'Content-Type': 'text/plain'});
         res.end('server is ready for caching');
-        
-      }
-
-    }).listen(1337, '127.0.0.1');
-
-    $('.status').html('Ready for caching') ;
-
-  }, //init
-
-  loadDocument: function(cb){
-
-    var given = this,
-        stuffWeDontCareAbout = 'https://docs.google.com/viewer?url=https://dl.dropboxusercontent.com/s/' ;
-    
-    console.log('url', given.url) ;
-
-    console.log('deconding', decodeURIComponent(given.url)) ;
-    console.log('without', decodeURIComponent(given.url).replace(stuffWeDontCareAbout, '')) ;
-    console.log('final', decodeURIComponent(given.url).replace(stuffWeDontCareAbout, '').split('/')[1].split('?')[0]) ;
-
-    given.documentName = decodeURIComponent(decodeURIComponent(given.url).replace(stuffWeDontCareAbout, '').split('/')[1].split('?')[0]),
-
-    console.log('doc name', given.documentName) ;
-
-    given.docSaveDir = given.saveDir + given.documentName.replace(' ', '-').replace('.', '-') + '/' ;
-
-    //check if we have a folder
-    fs.exists(given.docSaveDir, function(exists) {
-
-      console.log(given.docSaveDir) ;
-
-      console.log('doc folder exists', exists) ;
-
-      if(exists) {
-
-        console.log('dir exists, reading info', given.docSaveDir + '_info.txt') ;
-
-        //read the info!
-        fs.readFile(given.docSaveDir + '_info.txt', function(err, f){
-
-          if(err) throw err ;
-
-          console.log('error', err) ;
-
-          var params = JSON.parse(f.toString()) ;
-
-          console.log('f', f) ;
-
-          console.log('params', params) ;
-
-          given.baseImageURL = params.baseImageURL ;
-          given.numberOfPages = params.numberOfPages ;
-
-          $('.log').prepend('<li>Found ' + given.documentName + ' in cache') ;
-
-          //fire callback!
-          cb() ;
-
-        });
 
       }
-      else {
 
-        $('.log').prepend('<li>Waiting for Google\'s magic...</li>') ;
+    }, //init
 
-        var $iframe = $('<iframe />').attr('src', given.url).data('name', given.documentName) ;
-        $('body').append($iframe) ;
+    loadDocument: function(cb){
 
-        $('iframe[data-name="' + given.documentName + '"]').load(function(){
+      var given = this,
+          stuffWeDontCareAbout = 'https://docs.google.com/viewer?url=https://dl.dropboxusercontent.com/s/' ;
 
-          fs.mkdir(given.docSaveDir, function(){
+      given.documentName = decodeURIComponent(decodeURIComponent(given.url).replace(stuffWeDontCareAbout, '').split('/')[1].split('?')[0]) ;
 
-            console.log('iframe loaded') ;
+      console.log('doc name', given.documentName) ;
 
-            given.baseImageURL = 'https://docs.google.com/viewer' + $('iframe').contents().find('.page-image:nth-of-type(2)').attr('src') ;
-            given.numberOfPages = parseInt($('iframe[data-name="' + given.documentName + '"]').contents().find('#controlbarPageNumber').html().split(' / ')[1], 10) ;
+      given.docSaveDir = given.saveDir + given.documentName.replace(' ', '-').replace('.', '-') + '/' ;
 
-            fs.writeFileSync(given.docSaveDir + '/_info.txt', JSON.stringify(given), 'UTF-8', {'flags': 'w+'});
+      //create folder
+      fs.mkdir(given.docSaveDir, function() {
 
-            $('.log').prepend('<li>Downloading ' + given.numberOfPages + ' pages for ' + given.documentName + '</li>') ;
+        //check if info exists
+        fs.exists(given.docSaveDir + '_info.txt', function(exists) {
 
-            console.log('doc folder is ready') ;
+          console.log(given.documentName, given.docSaveDir + '_info.txt', 'info exists', exists) ;
 
-            cb(); //ready for
+          if(exists) {
 
-          }) ;
+            console.log(given.documentName, 'reading info', given.docSaveDir + '_info.txt') ;
 
-        }) ;
+            //read the info!
+            fs.readFile(given.docSaveDir + '_info.txt', function(err, f){
 
-      }
-    
-    }) ;
+              if(err) throw err ;
 
-  }, //load document
+              var params = JSON.parse(f.toString()) ;
 
-  downloadNextPage: function(i){
+              given.baseImageURL = params.baseImageURL ;
+              given.numberOfPages = params.numberOfPages ;
 
-    var given = this ;
-    given.downloadPage(i, function(){
-  
-      $('.log li:first').html('<li>Downloading ' + i + '/' + given.numberOfPages + ' pages for ' + given.documentName + '</li>') ;
+              $('.log').prepend('<li>Found ' + given.documentName + ' in cache') ;
 
-      if(i > 1) {
-        given.downloadNextPage(i - 1) ;
-      }
-  
-      if(i === 1) {
-        $('.log').prepend('<li>Finished downloading ' + given.documentName + '</li>') ;
-        $('iframe[data-name="' + given.documentName + '"]').remove() ;
-      }
+              //fire callback!
+              cb() ;
 
-    }) ;
+            });
 
-  },
+          }
+          else {
 
-  downloadPage: function(pageNumber, cb){
+            console.log(given.documentName, 'info doesnt exist, scraping iframe') ;
 
-    console.log('attemtping to save page ', pageNumber) ;
+            $('.log').prepend('<li>' + given.documentName + ': Waiting for Google\'s magic...</li>') ;
 
-    var given = this,
-        pageImageURL = given.baseImageURL.replace('pagenumber=1', 'pagenumber=' + pageNumber) ;
-    
-    given.pageSaveLocation = given.docSaveDir + '/page-' + pageNumber + '.png' ;
+            var $iframe = $('<iframe />').attr('src', given.url).attr('data-name', given.documentName) ;
+            $('body').append($iframe) ;
 
-    fs.exists(given.pageSaveLocation, function(exists) {
+            $('iframe[data-name="' + given.documentName + '"]').load(function(){
 
-      console.log('file exists:', exists) ;
+              fs.mkdir(given.docSaveDir, function(){
 
-      if(exists) {
-        //we done! cb!
-        cb() ;
-      }
-      else{
+                console.log(given.documentName, 'iframe loaded') ;
 
-        console.log('starting file download request') ;
+                given.baseImageURL = 'https://docs.google.com/viewer' + $('iframe').contents().find('.page-image:nth-of-type(2)').attr('src').replace(/(&w=\d+)/, '&w=' + given.pageWidth) ;
 
-        var startTime = new Date().getTime() ;
+                var rawNumberOfPages = $('iframe[data-name="' + given.documentName + '"]').contents().find('#controlbarPageNumber').html() ;
+                given.numberOfPages = (rawNumberOfPages !== undefined) ? parseInt($('iframe[data-name="' + given.documentName + '"]').contents().find('#controlbarPageNumber').html().split(' / ')[1], 10) : 0 ;
 
-        console.log('downloading ', pageImageURL) ;
+                fs.writeFileSync(given.docSaveDir + '_info.txt', JSON.stringify(given), 'UTF-8', {'flags': 'w+'});
 
-        https.get(pageImageURL, function(response) {
+                $('.log').prepend('<li>' + given.documentName + ': Downloading ' + given.numberOfPages + '</li>') ;
 
-          var imageData = '' ;
+                console.log(given.documentName, 'iframe scraped!') ;
 
-          response.setEncoding('binary') ;
+                cb(); //ready for
 
-          response.on('data', function(chunk) {
-            console.log('writing data') ;
-            imageData += chunk;
-          });
-
-          response.on('end', function () {
-
-            console.log('end of receiving') ;
-    
-            fs.writeFile(given.pageSaveLocation, imageData, 'binary', function(err){
-
-              if(err) {
-                throw err;
-              }
-
-              console.log('TOTAL TIME: ', (new Date().getTime() - startTime) / 1000) ;
-
-              console.log('File: ' + given.pageSaveLocation + ' written!');
-
-              cb() ; //callback!
+              }) ;
 
             }) ;
 
+          }
+        
+        }) ;
+      
+      }) ;
+
+    }, //load document
+
+    downloadNextPage: function(i){
+
+      var given = this ;
+      given.downloadPage(i, function(){
+    
+        $('.log li:first').html('<li>Downloading ' + i + '/' + given.numberOfPages + ' pages for ' + given.documentName + '</li>') ;
+
+        if(i > 1) {
+          given.downloadNextPage(i - 1) ;
+        }
+    
+        if(i === 1) {
+          $('.log').prepend('<li>Finished downloading ' + given.documentName + '</li>') ;
+          $('iframe[data-name="' + given.documentName + '"]').remove() ;
+        }
+
+      }) ;
+
+    },
+
+    downloadPage: function(pageNumber, cb){
+
+      var given = this,
+          pageImageURL = given.baseImageURL.replace('pagenumber=1', 'pagenumber=' + pageNumber) ;
+
+      console.log(given.documentName, 'attemtping to save page ', pageNumber) ;
+      
+      given.pageSaveLocation = given.docSaveDir + 'page-' + pageNumber + '.png' ;
+
+      fs.exists(given.pageSaveLocation, function(exists) {
+
+        console.log('file exists:', exists) ;
+
+        if(exists) {
+          //we done! cb!
+          cb() ;
+        }
+        else{
+
+          console.log(given.documentName, 'starting file download request') ;
+
+          var startTime = new Date().getTime() ;
+
+          console.log(given.documentName, 'downloading ', pageImageURL) ;
+
+          https.get(pageImageURL, function(response) {
+
+            var imageData = '' ;
+
+            response.setEncoding('binary') ;
+
+            response.on('data', function(chunk) {
+              console.log(given.documentName, 'writing data!') ;
+              imageData += chunk;
+            });
+
+            response.on('end', function () {
+
+              console.log(given.documentName, 'end of receiving') ;
+
+              if(imageData.length < 150) {
+
+                console.log('probably 404 error, trying again') ;
+
+                fs.unlink(given.pageSaveLocation, function(){
+                  given.downloadPage(pageNumber, cb) ;
+                }) ;
+
+              }
+              else {
+      
+                fs.writeFile(given.pageSaveLocation, imageData, 'binary', function(err){
+
+                  if(err) {
+                    throw err;
+                  }
+
+                  console.log(given.documentName, 'TOTAL TIME: ', (new Date().getTime() - startTime) / 1000) ;
+
+                  console.log(given.documentName, 'File: ' + given.pageSaveLocation + ' written!');
+
+                  cb() ; //callback!
+
+                }) ;
+
+              }
+
+            });
+
           });
 
-        });
+        }
 
-      }
+      });
 
-    });
+    }, //downloadPage
 
-  }, //downloadPage
+  } ;
 
-} ;
+  Server.init() ;
 
-Server.init() ;
+}).listen(1337, '127.0.0.1');
+
+$('.status').html('Ready for caching') ;
