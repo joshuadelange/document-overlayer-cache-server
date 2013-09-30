@@ -1,14 +1,16 @@
 var http = require('http'),
     https = require('https'),
-    fs = require('fs') ;
+    fs = require('fs'),
+    saveDir = process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'] + '/Documents/document-overlayer-cache/' ;
+
+//double check!
+fs.mkdir(saveDir, function(){}) ;
 
 http.createServer(function (req, res) {
 
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   var Server = {
-
-    saveDir: process.env[(process.platform === 'win32') ? 'USERPROFILE' : 'HOME'] + '/Documents/document-overlayer-cache/',
 
     url: '',
     documentName: '',
@@ -93,7 +95,7 @@ http.createServer(function (req, res) {
 
       given.log(given.documentName, given.pageNumber, ' is loading') ;
 
-      given.docSaveDir = given.saveDir + given.documentName.replace(' ', '-').replace('.', '-') + '/' ;
+      given.docSaveDir = saveDir + given.documentName.replace(' ', '-').replace('.', '-') + '/' ;
 
       //create folder
       fs.mkdir(given.docSaveDir, function() {
@@ -140,7 +142,7 @@ http.createServer(function (req, res) {
 
                 given.log(given.documentName, given.pageNumber, 'iframe loaded') ;
 
-                given.baseImageURL = 'https://docs.google.com/viewer' + $('iframe').contents().find('.page-image:nth-of-type(2)').attr('src').replace(/(&w=\d+)/, '&w=' + given.pageWidth) ;
+                given.baseImageURL = 'https://docs.google.com/viewer' + $('iframe[data-name="' + given.documentName + '"]').contents().find('.page-image:nth-of-type(2)').attr('src').replace(/(&w=\d+)/, '&w=' + given.pageWidth) ;
 
                 var rawNumberOfPages = $('iframe[data-name="' + given.documentName + '"]').contents().find('#controlbarPageNumber').html() ;
                 given.numberOfPages = (rawNumberOfPages !== undefined) ? parseInt($('iframe[data-name="' + given.documentName + '"]').contents().find('#controlbarPageNumber').html().split(' / ')[1], 10) : 0 ;
